@@ -90,14 +90,19 @@ It integrates public APIs like **HaveIBeenPwned** and **Hunter.io**, processes a
 ## 🧩 Execution Flow Summary
 
 ```mermaid
-graph TD
-A[Manual Trigger] --> B[Get All Breaches (HIBP API)]
-B --> C[Filter 2023 Breaches]
-C --> D[Enrich Data]
-D --> E[Check Valid Company]
-E -->|Valid| F[Wait 1 min → Hunter.io Search]
-E -->|Invalid| G[Invalid → Fallback]
-F --> H[Clean Structure]
-H --> I[Score Contacts]
-I --> J[Draft Email]
-J --> K[Write to Google Sheets]
+flowchart TD
+    Start([Start Workflow]) --> GetBreaches[Get 2023 Breaches from HIBP]
+    GetBreaches --> FilterData[Filter & Clean Data]
+    FilterData --> ValidateCompany{Valid Company?}
+    
+    ValidateCompany -->|Yes| WaitLimit[Wait 1 minute]
+    ValidateCompany -->|No| Skip[Skip Entry]
+    
+    WaitLimit --> FindContacts[Find Security Contacts]
+    FindContacts --> ScoreContacts[Score & Select Best Contacts]
+    ScoreContacts --> GenerateEmail[Generate Personalized Email]
+    GenerateEmail --> SaveToSheet[Save to Google Sheets]
+    
+    Skip --> SaveToSheet
+    SaveToSheet --> End([End])
+```
