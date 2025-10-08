@@ -87,24 +87,17 @@ It integrates public APIs like **HaveIBeenPwned** and **Hunter.io**, processes a
 
 ---
 
-## Execution Flow Summary
-Manual Trigger
-   ↓
-Get All Breaches (HIBP API)
-   ↓
-Filter 2023 Breaches
-   ↓
-Enrich Data
-   ↓
-Check Valid Company
-   ↳ Invalid → Fallback
-   ↓
-Wait 1 min → Hunter.io Search
-   ↓
-Clean Structure
-   ↓
-Score Contacts
-   ↓
-Draft Email
-   ↓
-Write to Google Sheets
+## 🧩 Execution Flow Summary
+
+```mermaid
+graph TD
+A[Manual Trigger] --> B[Get All Breaches (HIBP API)]
+B --> C[Filter 2023 Breaches]
+C --> D[Enrich Data]
+D --> E[Check Valid Company]
+E -->|Valid| F[Wait 1 min → Hunter.io Search]
+E -->|Invalid| G[Invalid → Fallback]
+F --> H[Clean Structure]
+H --> I[Score Contacts]
+I --> J[Draft Email]
+J --> K[Write to Google Sheets]
