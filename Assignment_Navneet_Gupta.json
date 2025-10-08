@@ -1,0 +1,535 @@
+{
+  "name": "Cybersecurity Outreach Workflow - Enhanced",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -208
+      ],
+      "id": "c6b4d9c0-9c29-4171-8f1e-1e49185e4371",
+      "name": "Start Workflow"
+    },
+    {
+      "parameters": {
+        "url": "https://haveibeenpwned.com/api/v3/breaches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "hibp-api-key",
+              "value": "00000000000000000000000000000000"
+            },
+            {
+              "name": "user-agent",
+              "value": "n8n-breachfinder"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        -208
+      ],
+      "id": "c19c826e-ae13-4cc6-a5c8-e6c9afc26db7",
+      "name": "Get All Breaches from HIBP"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced 2023 breach filter\nconst breaches = $input.all().map(item => item.json);\n\nconsole.log('Total breaches from HIBP:', breaches.length);\n\nconst recentBreaches = breaches.filter(b => {\n  if (!b.BreachDate) return false;\n  \n  try {\n    const breachDate = new Date(b.BreachDate);\n    const breachYear = breachDate.getFullYear();\n    const is2023Breach = breachYear === 2023;\n    \n    // More flexible keyword matching\n    const title = (b.Title || '').toLowerCase();\n    const description = (b.Description || '').toLowerCase();\n    const name = (b.Name || '').toLowerCase();\n    \n    const hasBreachKeywords = \n      title.includes('breach') ||\n      description.includes('breach') ||\n      name.includes('breach') ||\n      title.includes('leak') ||\n      description.includes('leak') ||\n      title.includes('compromise') ||\n      description.includes('compromise') ||\n      title.includes('incident') ||\n      description.includes('incident');\n\n    return is2023Breach && hasBreachKeywords;\n  } catch (error) {\n    return false;\n  }\n});\n\nconsole.log('2023 breaches found:', recentBreaches.length);\n\n// Return ALL found breaches\n// Return only the first 10 breaches to limit API calls\nreturn recentBreaches.map(b => ({ json: b }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -208
+      ],
+      "id": "6dd801b9-1f3f-4cd7-ab36-f29fc5165e11",
+      "name": "Filter 2023 Breaches"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced breach data enrichment\nconst result = items.map(item => {\n  const b = item.json || {};\n  \n  // Extract company name from breach title\n  let companyName = b.Title || b.Name || \"Unknown Company\";\n  companyName = companyName.replace(/breach/gi, '').replace(/2023/gi, '').replace(/data/gi, '').trim();\n  companyName = companyName.replace(/[^a-zA-Z0-9\\s&]/g, '').trim();\n  \n  // If company name is still generic, use domain\n  if (companyName === \"Unknown Company\" && b.Domain) {\n    companyName = b.Domain.replace('.com', '').replace(/\\b\\w/g, l => l.toUpperCase());\n  }\n  \n  return {\n    json: {\n      companyName: companyName,\n      companyDomain: b.Domain || companyName.toLowerCase().replace(/[^a-z0-9]/g, '') + \".com\",\n      breachName: b.Title || b.Name || \"Data Breach\",\n      breachDate: b.BreachDate || \"2023\",\n      breachSummary: b.Description ? b.Description.replace(/<[^>]*>/gm, '').substring(0, 200) + \"...\" : \"No description available\",\n      status: \"Breach Found\",\n      sourceUrl: `https://haveibeenpwned.com/breach/${b.Name || ''}`\n    },\n  };\n});\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -208
+      ],
+      "id": "7cd264c2-5b18-47ed-8dce-c7f42a7a68e2",
+      "name": "Enrich Breach Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-company-name",
+              "leftValue": "={{ $json.companyName }}",
+              "rightValue": "Unknown Company",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -208
+      ],
+      "id": "7bd03f7a-8ff5-42af-916f-387e68ba952b",
+      "name": "Check Valid Company"
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        384,
+        80
+      ],
+      "id": "4c5ad036-235b-420f-8d56-f49db511135e",
+      "name": "Wait for Rate Limit",
+      "webhookId": "a4555e0b-289f-4b86-b86d-31212d79178e"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hunter.io/v2/domain-search?domain={{ $json.companyDomain }}&api_key=12e6bd6da9cfa031ab9fa8270db8dc47db280823",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        608,
+        80
+      ],
+      "id": "626413ca-a4fc-4c82-ba1f-9534cff6c12c",
+      "name": "Hunter.io - Find Security Contacts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop through all input items (so multiple breaches are processed)\nconst output = [];\n\nfor (const item of $input.all()) {\n  const b = item.json;\n\n  // Extract relevant fields safely\n  const companyName = b.organization || b.company || b.data?.organization || \"Unknown Company\";\n  const companyDomain = b.domain || b.data?.domain || \"unknown.com\";\n  const breachName = b.breachName || \"Data Breach 2023\";\n  const breachDate = b.breachDate || \"2023\";\n  const breachSummary = b.breachSummary || \"Security incident affecting company data\";\n  const emails = b.data?.emails || [];\n  \n  // Build a clean object for output\n  output.push({\n    json: {\n      companyName,\n      companyDomain,\n      breachName,\n      breachDate,\n      breachSummary,\n      totalEmailsFound: emails.length,\n      contactSearchStatus: \"Processing\",\n      data: {\n        domain: companyDomain,\n        organization: companyName,\n        emails: emails.map(e => ({\n          email: e.value,\n          confidence: e.confidence,\n          position: e.position,\n          department: e.department,\n          first_name: e.first_name,\n          last_name: e.last_name\n        }))\n      }\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        80
+      ],
+      "id": "b9258d7d-e1e6-4c49-86e5-110678c3e920",
+      "name": "Clean Data Structure"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create personalized outreach emails for each contact\nconst results = [];\n\nfor (const item of $input.all()) {\n  const companyName = item.json[\"Company Name\"] || \"your company\";\n  const breachName = item.json[\"Breach Name\"] || \"data breach\";\n  const breachDate = item.json[\"Breach Date\"] || \"2023\";\n  const contactName = item.json[\"Contact Name\"] || \"there\";\n  const contactPosition = item.json[\"Contact Position\"] || \"Security Executive\";\n  const contactEmail = item.json[\"Contact Email\"] || \"no-email@example.com\";\n\n  // Create a friendly, professional outreach email\n  const draftEmail = `Hi ${contactName.split(' ')[0] || \"there\"},\n\nI recently came across information regarding the ${breachName} that impacted ${companyName} in ${breachDate}. \nAs someone experienced in cybersecurity, I understand the challenges such incidents can pose — especially for professionals like you in roles such as ${contactPosition}.\n\nI’d love to share a few actionable insights and tools that have helped other organizations enhance their post-breach security posture and prevent similar issues in the future. \n\nWould you be open to a short discussion or email exchange on strategies that could strengthen ${companyName}'s data protection efforts?\n\nBest regards,\nNavneet Gupta\nCybersecurity & AI Engineer\n[Your Email / LinkedIn / Company Website]`;\n\n  // Create a dynamic subject line\n  const emailSubject = `Post-breach security insights for ${companyName}`;\n\n  results.push({\n    json: {\n      \"Company Name\": companyName,\n      \"Breach Name\": breachName,\n      \"Breach Date\": breachDate,\n      \"Contact Name\": contactName,\n      \"Contact Position\": contactPosition,\n      \"Contact Email\": contactEmail,\n      \"Email Subject\": emailSubject,\n      \"Draft Email\": draftEmail,\n      \"Status\": \"Ready for Outreach\"\n    }\n  });\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        80
+      ],
+      "id": "0f1da4f3-0e6f-49e5-9323-9978a3cabf09",
+      "name": "Draft Personalized Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fallback for invalid companies\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    contact: null,\n    draftEmail: \"Invalid company data - cannot proceed with outreach.\",\n    emailSubject: \"\",\n    status: \"Invalid Company Data\",\n    contactSearchStatus: \"Skipped\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        -192
+      ],
+      "id": "4b68ae6e-8055-45b9-8ad9-8df44792994a",
+      "name": "Invalid Company Fallback"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "https://docs.google.com/spreadsheets/d/1sUCmw_J13onwgsHqMxPUkBaY3-TvSBRlfow7ZiuyX1A/edit?usp=sharing",
+          "__regex": "https:\\/\\/(?:drive|docs)\\.google\\.com(?:\\/.*|)\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Name": "={{ $json[\"Company Name\"] }}",
+            "Breach Name": "={{ $json[\"Breach Name\"] }}",
+            "Breach Date": "={{ $json[\"Breach Date\"] }}",
+            "Contact Name": "={{ $json[\"Contact Name\"] }}",
+            "Contact Position": "={{ $json[\"Contact Position\"] }}",
+            "Contact Email": "={{ $json[\"Contact Email\"] }}",
+            "Email Subject": "={{ $json[\"Email Subject\"] }}",
+            "Draft Email": "={{ $json[\"Draft Email\"] }}",
+            "Status": "={{ $json.Status }}"
+          },
+          "matchingColumns": [
+            "Company Name"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Breach Name",
+              "displayName": "Breach Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Breach Date",
+              "displayName": "Breach Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contact Position",
+              "displayName": "Contact Position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contact Email",
+              "displayName": "Contact Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Subject",
+              "displayName": "Email Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Draft Email",
+              "displayName": "Draft Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Contact Search Status",
+              "displayName": "Contact Search Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false,
+          "mapping": [
+            {
+              "cell": "A",
+              "mapping": "={{ $json.companyName }}"
+            },
+            {
+              "cell": "B",
+              "mapping": "={{ $json.breachName }}"
+            },
+            {
+              "cell": "C",
+              "mapping": "={{ $json.breachDate }}"
+            },
+            {
+              "cell": "D",
+              "mapping": "={{ $json.contact.name }}"
+            },
+            {
+              "cell": "E",
+              "mapping": "={{ $json.contact.position }}"
+            },
+            {
+              "cell": "F",
+              "mapping": "={{ $json.contact.email }}"
+            },
+            {
+              "cell": "G",
+              "mapping": "={{ $json.emailSubject }}"
+            },
+            {
+              "cell": "H",
+              "mapping": "={{ $json.draftEmail }}"
+            },
+            {
+              "cell": "I",
+              "mapping": "={{ $json.status }}"
+            },
+            {
+              "cell": "J",
+              "mapping": "={{ $json.contactSearchStatus }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2176,
+        80
+      ],
+      "id": "5f2340a9-21d2-44cc-a883-bb743941738d",
+      "name": "Write Results to Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "4ssIoWLGjK28D7X2",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Scoring Function ---\nfunction calculateSecurityContactScore(contact) {\n  let score = 0;\n  const position = (contact.position || '').toLowerCase();\n  const email = (contact.email || '').toLowerCase();\n\n  // Role-based scoring\n  if (position.includes('ciso') || position.includes('chief information security')) score += 100;\n  if (position.includes('director of security') || position.includes('head of security')) score += 90;\n  if (position.includes('security') || position.includes('infosec')) score += 80;\n  if (position.includes('cyber')) score += 70;\n  if (position.includes('chief technology') || position.includes('cto')) score += 60;\n  if (position.includes('vice president') && position.includes('security')) score += 85;\n\n  // Seniority / Department\n  if (contact.seniority === 'executive') score += 40;\n  if (contact.seniority === 'senior') score += 20;\n  if (contact.department === 'security' || contact.department === 'information technology') score += 25;\n\n  // Confidence and verification\n  if (contact.confidence > 80) score += 20;\n  if (contact.confidence > 90) score += 10;\n  if (contact.verification?.status === 'valid') score += 15;\n\n  // Email and type\n  if (contact.email && contact.email.includes('@')) score += 10;\n  if (contact.type === 'personal') score += 15;\n  if (contact.type === 'generic') score += 5;\n\n  return score;\n}\n\n// --- Process all input items ---\nconst results = [];\nconst companyContactsMap = {};\n\n// Group and score contacts by company\nfor (const item of items) {\n  const data = item.json.data || {};\n  const emails = data.emails || [];\n  const company = data.organization || item.json.companyName || \"Unknown Company\";\n\n  if (emails.length === 0) continue;\n\n  // Score and filter contacts\n  const scoredContacts = emails\n    .map(contact => ({ ...contact, score: calculateSecurityContactScore(contact) }))\n    .filter(c =>\n      c.email &&\n      c.email.includes('@') &&\n      !(c.email.includes('no-reply') || c.email.includes('noreply')) &&\n      (c.first_name || c.last_name || c.position)\n    )\n    .sort((a, b) => b.score - a.score);\n\n  if (scoredContacts.length === 0) continue;\n\n  // Take top 2 contacts per company (you can change 2 → 1 or 3)\n  companyContactsMap[company] = scoredContacts.slice(0, 2).map(c => ({\n    \"Company Name\": company,\n    \"Breach Name\": item.json.breachName || \"Data Breach 2023\",\n    \"Breach Date\": item.json.breachDate || \"2023\",\n    \"Contact Name\": `${c.first_name || ''} ${c.last_name || ''}`.trim() || \"Unknown\",\n    \"Contact Position\": c.position || \"N/A\",\n    \"Contact Email\": c.email || \"N/A\"\n  }));\n}\n\n// Flatten all companies into one list\nfor (const company in companyContactsMap) {\n  results.push(...companyContactsMap[company]);\n}\n\n// Sort globally by company name (optional)\nresults.sort((a, b) => a[\"Company Name\"].localeCompare(b[\"Company Name\"]));\n\n// Return top 10 with diverse companies\nreturn results.slice(0, 10);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        80
+      ],
+      "id": "1c835a85-ad4d-4db7-884b-9ed940cf728f",
+      "name": "Score & Select Best Contact"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get All Breaches from HIBP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Breaches from HIBP": {
+      "main": [
+        [
+          {
+            "node": "Filter 2023 Breaches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter 2023 Breaches": {
+      "main": [
+        [
+          {
+            "node": "Enrich Breach Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Breach Data": {
+      "main": [
+        [
+          {
+            "node": "Check Valid Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid Company": {
+      "main": [
+        [
+          {
+            "node": "Wait for Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Company Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Hunter.io - Find Security Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter.io - Find Security Contacts": {
+      "main": [
+        [
+          {
+            "node": "Clean Data Structure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Data Structure": {
+      "main": [
+        [
+          {
+            "node": "Score & Select Best Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Personalized Email": {
+      "main": [
+        [
+          {
+            "node": "Write Results to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalid Company Fallback": {
+      "main": [
+        [
+          {
+            "node": "Write Results to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Select Best Contact": {
+      "main": [
+        [
+          {
+            "node": "Draft Personalized Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "322734da-38a4-43b6-a94d-7f407c0e7909",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1c53c4b495d7b003597b9ea6cb3ed9c25d995176469d31893a573bef18567746"
+  },
+  "id": "RRXe4XgZEMws8oHw",
+  "tags": []
+}
